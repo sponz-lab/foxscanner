@@ -751,10 +751,10 @@
 
 <div class="panel" id="wh-panel" hidden>
   <div class="row" style="justify-content:space-between;margin-bottom:8px">
-    <h2 style="margin:0">창고에 반영하기</h2>
+    <h2 style="margin:0" id="wh-title">창고에 반영하기</h2>
     <button class="btn ghost small" id="btn-wh-close" type="button">닫기</button>
   </div>
-  <p class="hint" style="margin:0 0 10px">입고한 수량을 박스에 더합니다. <b>실물을 넣은 박스와 같은지</b> 확인하고 보내세요. 보낸 뒤에는 FoxScanner 에서 고쳐야 합니다.</p>
+  <p class="hint" style="margin:0 0 10px" id="wh-hint">입고한 수량을 박스에 더합니다. <b>실물을 넣은 박스와 같은지</b> 확인하고 보내세요. 보낸 뒤에는 FoxScanner 에서 고쳐야 합니다.</p>
   <div id="wh-body"></div>
   <div class="row" style="margin-top:12px">
     <button class="btn primary" id="btn-wh-send" type="button">이대로 보내기</button>
@@ -6239,6 +6239,23 @@ window.__qrcode = (typeof qrcode !== "undefined") ? qrcode : (typeof module !== 
   var whSeq = 0;
 
   function el(id){ return document.getElementById(id); }
+
+  /* 입고는 박스에 더하고, 반품·매장간 이동은 박스에서 뺀다.
+     같은 화면을 쓰되 방향에 따라 말과 명령만 바꾼다. */
+  function whDir(){ return (typeof mode !== "undefined" && mode === "") ? "add" : "sub"; }
+  function whWords(){
+    if (whDir() === "add"){
+      return { op:"whadd", act:"더할", verb:"더합니다", barTitle:"입고한",
+               panel:"창고에 반영하기", btn:"이대로 보내기",
+               hint:"입고한 수량을 박스에 더합니다. <b>실물을 넣은 박스와 같은지</b> 확인하고 보내세요.",
+               ok:"개를 창고에 더했습니다." };
+    }
+    var what = (typeof mode !== "undefined" && mode === "transfer") ? "이동한" : "반품한";
+    return { op:"whsub", act:"뺄", verb:"뺍니다", barTitle:what,
+             panel:"창고에서 빼기", btn:"이대로 빼기",
+             hint:"박스에서 나간 수량을 덜어 냅니다. <b>실물을 꺼낸 박스와 같은지</b> 확인하고 보내세요.",
+             ok:"개를 창고에서 뺐습니다." };
+  }
   function esc2(s){
     return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){
       return c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;";
@@ -6319,7 +6336,6 @@ window.__qrcode = (typeof qrcode !== "undefined") ? qrcode : (typeof module !== 
   }
   function whBuildPlan(){
     var out = [];
-    if (typeof mode !== "undefined" && mode !== "") return out;   /* 입고만 */
     if (typeof items === "undefined" || !items) return out;
     for (var i = 0; i < items.length; i++){
       var it = items[i];
@@ -6343,7 +6359,7 @@ window.__qrcode = (typeof qrcode !== "undefined") ? qrcode : (typeof module !== 
   function whUpdateBar(){
     var bar = el("whbar");
     if (!bar) return;
-    if (typeof mode !== "undefined" && mode !== ""){ bar.hidden = true; return; }
+    var W = whWords();
     var rows = whBuildPlan();
     if (!rows.length){ bar.hidden = true; return; }
     /* 자리를 아는 것만 '더할 수 있는 수량' 이다. 못 보낼 것까지 세면 숫자가 거짓말을 한다. */
@@ -6354,25 +6370,30 @@ window.__qrcode = (typeof qrcode !== "undefined") ? qrcode : (typeof module !== 
     if (!whReady()){
       txt = "창고에 반영하려면 중계 설정이 먼저 필요합니다";
     } else if (canQty){
-      txt = "입고한 " + canQty + "개를 창고 박스에 더할 수 있습니다";
+      txt = W.barTitle + " " + canQty + "개를 창고 박스에서 " + (whDir() === "add" ? "더할" : "뺄") + " 수 있습니다";
       if (noBox) txt += " · 자리를 모르는 품목 " + noBox + "건은 빠집니다";
     } else {
       /* 보낼 것은 없지만 자리를 모르는 것이 남았다 — 조용히 숨기면 영영 빠진다 */
       txt = "자리를 모르는 품목이 " + noBox + "건 있습니다 — FoxScanner 에서 박스를 정해 주세요";
     }
     el("wh-txt").textContent = txt;
+    el("btn-wh-open").textContent = W.panel;
     el("btn-wh-open").disabled = !whReady() || !canQty;
   }
 
   /* ---------- 확인 화면 ---------- */
   function whRenderPanel(){
+    var W = whWords();
     whPlanRows = whBuildPlan();
-    var h = '<table class="tbl"><thead><tr><th>상품</th><th>바코드</th><th class="num">더할 수량</th><th>박스</th></tr></thead><tbody>';
-    if (!whPlanRows.length) h += '<tr><td colspan="4">더할 것이 없습니다.</td></tr>';
+    el("wh-title").textContent = W.panel;
+    el("wh-hint").innerHTML = W.hint + " 보낸 뒤에는 FoxScanner 에서 고쳐야 합니다.";
+    el("btn-wh-send").textContent = W.btn;
+    var h = '<table class="tbl"><thead><tr><th>상품</th><th>바코드</th><th class="num">' + W.act + ' 수량</th><th>박스</th></tr></thead><tbody>';
+    if (!whPlanRows.length) h += '<tr><td colspan="4">' + W.act + ' 것이 없습니다.</td></tr>';
     whPlanRows.forEach(function(r, i){
       var cell;
       if (!r.boxes.length){
-        cell = '<span class="warn">자리 없음 — 보내지 않습니다</span>';
+        cell = '<span class="warn">자리 없음 — ' + (whDir() === "add" ? "보내지" : "빼지") + ' 않습니다</span>';
       } else if (r.boxes.length === 1){
         cell = esc2(r.boxes[0].box) + (r.boxes[0].place ? ' <span class="sub">' + esc2(r.boxes[0].place) + '</span>' : "");
       } else {
@@ -6404,7 +6425,7 @@ window.__qrcode = (typeof qrcode !== "undefined") ? qrcode : (typeof module !== 
       return;
     }
     if (!ready.length){
-      el("wh-status").textContent = "보낼 것이 없습니다.";
+      el("wh-status").textContent = (whDir() === "add" ? "보낼" : "뺄") + " 것이 없습니다.";
       el("wh-status").className = "status err";
       return;
     }
@@ -6415,16 +6436,17 @@ window.__qrcode = (typeof qrcode !== "undefined") ? qrcode : (typeof module !== 
       groups[r.pick].push(r);
     });
 
+    var W = whWords();
     whBusy = true;
     var btn = el("btn-wh-send");
     btn.disabled = true;
-    var i = 0, okRows = [], bad = [];
+    var i = 0, okRows = [], bad = [], miss = [];
 
     (function next(){
       if (i >= order.length){
         whBusy = false;
         btn.disabled = false;
-        btn.textContent = "이대로 보내기";
+        btn.textContent = W.btn;
         /* 보낸 것만 기록한다 — 실패한 박스는 다시 보낼 수 있어야 한다 */
         var m = whSent[whSessionKey()] = whSent[whSessionKey()] || {};
         okRows.forEach(function(r){ m[r.barcode] = (m[r.barcode] || 0) + r.qty; });
@@ -6438,8 +6460,9 @@ window.__qrcode = (typeof qrcode !== "undefined") ? qrcode : (typeof module !== 
           el("wh-status").textContent = done + "개는 보냈고, 실패한 박스가 있습니다 — " + bad.join(" / ");
           el("wh-status").className = "status err";
         } else {
-          el("wh-status").textContent = done + "개를 창고에 더했습니다. FoxScanner 에서 바로 보입니다.";
-          el("wh-status").className = "status ok";
+          var tail = miss.length ? " 다만 기록에 없어 건드리지 못한 것이 있습니다 — " + miss.join(", ") : " FoxScanner 에서 바로 보입니다.";
+          el("wh-status").textContent = done + W.ok + tail;
+          el("wh-status").className = miss.length ? "status err" : "status ok";
         }
         return;
       }
@@ -6450,11 +6473,15 @@ window.__qrcode = (typeof qrcode !== "undefined") ? qrcode : (typeof module !== 
           if (list[k].boxes[j].box === box){ place = list[k].boxes[j].place; break; }
         }
       }
-      btn.textContent = box + " 보내는 중";
+      btn.textContent = box + " " + (whDir() === "add" ? "보내는" : "빼는") + " 중";
       var packed = list.map(function(r){ return r.barcode + "*" + r.qty + "*"; }).join(",");
-      whRtCall({ op:"whadd", box:box, loc:place, d:packed, by:whCfg.by || "" }, function(err, d){
+      whRtCall({ op:W.op, box:box, loc:place, d:packed, by:whCfg.by || "" }, function(err, d){
         if (err || !d || d.error) bad.push(box + " (" + (err || (d && d.error) || "응답 없음") + ")");
-        else okRows = okRows.concat(list);
+        else {
+          okRows = okRows.concat(list);
+          /* 빼기는 '기록에 없어서 못 뺀 것' 을 돌려준다. 조용히 넘기면 창고 자료가 어긋난다. */
+          if (d.missing && d.missing.length) miss = miss.concat(d.missing);
+        }
         next();
       });
     })();
